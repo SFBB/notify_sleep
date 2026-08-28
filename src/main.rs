@@ -19,7 +19,16 @@ const SLEEP_TIME: u64 = 120 * 60;
 
 fn trigger_system_suspend() {
     println!("Time out! Start to suspend system!");
-    let _ = Command::new("systemctl").args(["suspend", "-i"]).status();
+    let _ = Command::new("dbus-send")
+        .args([
+            "--system",
+            "--print-reply",
+            "--dest=org.freedesktop.login1",
+            "/org/freedesktop/login1",
+            "org.freedesktop.login1.Manager.Suspend",
+            "boolean:true",
+        ])
+        .status();
 }
 
 fn get_screen_resolution() -> (f32, f32) {
