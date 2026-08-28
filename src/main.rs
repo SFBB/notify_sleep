@@ -2,11 +2,31 @@ use std::time::{Duration, Instant};
 
 use x11rb::{
     connection::Connection,
-    protocol::xproto::{AtomEnum, ClientMessageEvent, ConnectionExt, EventMask, PropMode},
+    protocol::xproto::{
+        AtomEnum, ChangeWindowAttributesAux, ClientMessageEvent, ConfigureWindowAux, ConnectionExt,
+        EventMask, PropMode, StackMode,
+    },
     wrapper::ConnectionExt as _,
 };
 
+use crate::state_machine::OsdStateMachine;
+
+mod state_machine;
+
 const APP_WINDOW_NAME: &str = "Sleep OSD";
+const SLEEP_TIME: u64 = 120 * 60;
+
+fn get_screen_resolution() -> (f32, f32) {
+    if let Ok((conn, screen_num)) = x11rb::connect(None) {
+        let screen = &conn.setup().roots[screen_num];
+        return (
+            screen.width_in_pixels as f32,
+            screen.height_in_pixels as f32,
+        );
+    }
+    println!("We use the fallback screen resolution!");
+    (1920.0, 1080.0)
+}
 
 fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (conn, screen_num) = x11rb::connect(None)?;
@@ -24,6 +44,10 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
         .reply()?
         .atom;
     let net_wm_state = conn.intern_atom(false, b"_NET_WM_STATE")?.reply()?.atom;
+    let state_fullscreen = conn
+        .intern_atom(false, b"_NET_WM_STATE_FULLSCREEN")?
+        .reply()?
+        .atom;
     let state_above = conn
         .intern_atom(false, b"_NET_WM_STATE_ABOVE")?
         .reply()?
@@ -52,48 +76,16 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
                 if title == window_name {
                     println!("Window found, make it osd!");
 
-                    conn.change_property32(
-                        PropMode::REPLACE,
+                    conn.unmap_window(win)?;
+                    conn.change_window_attributes(
                         win,
-                        net_wm_type,
-                        AtomEnum::ATOM,
-                        &[type_notification],
+                        &ChangeWindowAttributesAux::default().override_redirect(1),
                     )?;
+                    conn.map_window(win)?;
 
-                    conn.change_property32(
-                        PropMode::REPLACE,
+                    conn.configure_window(
                         win,
-                        net_wm_state,
-                        AtomEnum::ATOM,
-                        &[
-                            state_above,
-                            state_skip_taskbar,
-                            state_skip_pager,
-                            state_sticky,
-                        ],
-                    )?;
-
-                    let event = ClientMessageEvent {
-                        response_type: 33, // CLIENT_MESSAGE
-                        format: 32,
-                        sequence: 0,
-                        window: win,
-                        type_: net_wm_state,
-                        data: [
-                            1, // _NET_WM_STATE_ADD
-                            state_skip_taskbar,
-                            state_skip_pager,
-                            state_above,
-                            state_sticky,
-                        ]
-                        .into(),
-                    };
-
-                    conn.send_event(
-                        false,
-                        root,
-                        EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
-                        event,
+                        &ConfigureWindowAux::default().stack_mode(StackMode::ABOVE),
                     )?;
 
                     conn.flush()?;
@@ -108,12 +100,14 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
 
 struct SleepOdsApp {
     target_time: Instant,
+    state_machine: OsdStateMachine,
 }
 
 impl SleepOdsApp {
     fn new(duration: Duration) -> Self {
         Self {
             target_time: Instant::now() + duration,
+            state_machine: OsdStateMachine::new(),
         }
     }
 }
@@ -121,47 +115,35 @@ impl SleepOdsApp {
 impl eframe::App for SleepOdsApp {
     fn ui(&mut self, ctx: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let now = Instant::now();
+        let screen_rect = ctx.viewport_rect();
+
+        self.state_machine.tick(now, screen_rect);
+
         let remaining = if self.target_time > now {
             self.target_time - now
         } else {
             Duration::ZERO
         };
-
-        let mins = remaining.as_secs() / 60;
+        let hours = remaining.as_secs() / 3600;
+        let mins = (remaining.as_secs() % 3600) / 60;
         let secs = remaining.as_secs() % 60;
+        let time_str = if hours > 0 {
+            format!("{:02}:{:02}:{:02}", hours, mins, secs)
+        } else {
+            format!("{:02}:{:02}", mins, secs)
+        };
 
-        let frame = egui::Frame::NONE
-            .fill(egui::Color32::from_black_alpha(160))
-            .corner_radius(24.0)
-            .inner_margin(27.0);
-
-        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
-            ui.vertical_centered_justified(|ui| {
-                ui.heading(
-                    egui::RichText::new("Time to sleep!")
-                        .color(egui::Color32::WHITE)
-                        .size(24.0),
-                );
-                ui.add_space(9.0);
-                ui.label(
-                    egui::RichText::new(format!("{:02}:{:02}", mins, secs))
-                        .color(egui::Color32::from_rgb(255, 100, 100))
-                        .size(45.0)
-                        .strong(),
-                );
-                ui.add_space(9.0);
-                ui.label(
-                    egui::RichText::new("This PC will sleep after time out!")
-                        .color(egui::Color32::LIGHT_GRAY)
-                        .size(15.0),
-                );
-            })
-        });
+        self.state_machine.render(ctx, &time_str);
 
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
             egui::WindowLevel::AlwaysOnTop,
         ));
-        ctx.request_repaint_after(Duration::from_millis(500));
+
+        if self.state_machine.is_animating() {
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(Duration::from_millis(500));
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -169,6 +151,9 @@ impl eframe::App for SleepOdsApp {
     }
 }
 fn main() -> eframe::Result<()> {
+    let (screen_w, screen_h) = get_screen_resolution();
+    println!("Screen resolution: {}x{}", screen_w, screen_h);
+
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_millis(200));
         let _ = make_window_osd(APP_WINDOW_NAME);
@@ -180,11 +165,12 @@ fn main() -> eframe::Result<()> {
             .with_transparent(true)
             .with_always_on_top()
             .with_mouse_passthrough(true)
-            .with_inner_size([300.0, 150.0])
-            .with_position([100.0, 100.0]),
+            .with_position([0.0, 0.0])
+            .with_inner_size([screen_w, screen_h])
+            .with_fullscreen(true),
         ..Default::default()
     };
 
-    let app = SleepOdsApp::new(Duration::from_secs(120 * 60));
+    let app = SleepOdsApp::new(Duration::from_secs(SLEEP_TIME));
     eframe::run_native(APP_WINDOW_NAME, options, Box::new(|_| Ok(Box::new(app))))
 }
