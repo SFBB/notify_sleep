@@ -1,7 +1,4 @@
-use std::{
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use egui::{Color32, CornerRadius, Pos2, Rect, RichText, Vec2};
 
@@ -84,10 +81,7 @@ impl OsdStateMachine {
                 start_time: now,
                 duration,
             },
-            Request::Finish => {
-                trigger_system_suspend();
-                State::Finish
-            }
+            Request::Finish => State::Finish,
         };
     }
 
@@ -304,16 +298,4 @@ impl OsdStateMachine {
                 });
             });
     }
-}
-
-fn trigger_system_suspend() {
-    println!("Time out! Start to suspend system!");
-
-    let res = Command::new("systemctl").args(["suspend", "-i"]).status();
-
-    if let Err(e) = res {
-        eprintln!("Failed to trigger system suspend: {}", e);
-    }
-
-    std::process::exit(0);
 }

@@ -1,12 +1,13 @@
-use std::time::{Duration, Instant};
+use std::{
+    process::Command,
+    time::{Duration, Instant},
+};
 
 use x11rb::{
     connection::Connection,
     protocol::xproto::{
-        AtomEnum, ChangeWindowAttributesAux, ClientMessageEvent, ConfigureWindowAux, ConnectionExt,
-        EventMask, PropMode, StackMode,
+        AtomEnum, ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt, StackMode,
     },
-    wrapper::ConnectionExt as _,
 };
 
 use crate::state_machine::OsdStateMachine;
@@ -15,6 +16,18 @@ mod state_machine;
 
 const APP_WINDOW_NAME: &str = "Sleep OSD";
 const SLEEP_TIME: u64 = 120 * 60;
+
+fn trigger_system_suspend() {
+    println!("Time out! Start to suspend system!");
+
+    let res = Command::new("systemctl").args(["suspend", "-i"]).status();
+
+    if let Err(e) = res {
+        eprintln!("Failed to trigger system suspend: {}", e);
+    }
+
+    std::process::exit(0);
+}
 
 fn get_screen_resolution() -> (f32, f32) {
     if let Ok((conn, screen_num)) = x11rb::connect(None) {
@@ -35,35 +48,6 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
     let root = screen.root;
 
     let wm_name = conn.intern_atom(false, b"_NET_WM_NAME")?.reply()?.atom;
-    let net_wm_type = conn
-        .intern_atom(false, b"_NET_WM_WINDOW_TYPE")?
-        .reply()?
-        .atom;
-    let type_notification = conn
-        .intern_atom(false, b"_NET_WM_WINDOW_TYPE_NOTIFICATION")?
-        .reply()?
-        .atom;
-    let net_wm_state = conn.intern_atom(false, b"_NET_WM_STATE")?.reply()?.atom;
-    let state_fullscreen = conn
-        .intern_atom(false, b"_NET_WM_STATE_FULLSCREEN")?
-        .reply()?
-        .atom;
-    let state_above = conn
-        .intern_atom(false, b"_NET_WM_STATE_ABOVE")?
-        .reply()?
-        .atom;
-    let state_skip_taskbar = conn
-        .intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR")?
-        .reply()?
-        .atom;
-    let state_skip_pager = conn
-        .intern_atom(false, b"_NET_WM_STATE_SKIP_PAGER")?
-        .reply()?
-        .atom;
-    let state_sticky = conn
-        .intern_atom(false, b"_NET_WM_STATE_STICKY")?
-        .reply()?
-        .atom;
 
     let tree = conn.query_tree(root)?.reply()?;
     for &win in &tree.children {
@@ -164,6 +148,11 @@ fn main() -> eframe::Result<()> {
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_millis(200));
         let _ = make_window_osd(APP_WINDOW_NAME);
+    });
+
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_secs(SLEEP_TIME));
+        trigger_system_suspend();
     });
 
     let options = eframe::NativeOptions {
