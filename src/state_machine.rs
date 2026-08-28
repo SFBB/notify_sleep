@@ -23,6 +23,7 @@ pub(crate) enum State {
     Finish,
 }
 
+#[allow(dead_code)]
 pub(crate) enum Request {
     TriggerAlert { splash_duration: Duration },
     ShowCenterCard { duration: Duration },
@@ -139,6 +140,17 @@ impl OsdStateMachine {
         )
     }
 
+    pub(crate) fn is_corner_badge(&self) -> bool {
+        matches!(self.state, State::CornerBadge { .. })
+    }
+
+    pub(crate) fn get_current_rect(&self) -> Option<Rect> {
+        match &self.state {
+            State::CornerBadge { rect } => Some(*rect),
+            _ => None,
+        }
+    }
+
     pub(crate) fn render(&self, ctx: &egui::Context, time_str: &str) {
         let now = Instant::now();
         let screen_rect = ctx.viewport_rect();
@@ -230,8 +242,9 @@ impl OsdStateMachine {
                 );
             }
 
-            State::CornerBadge { rect } => {
-                Self::draw_card(ctx, *rect, 21.0, false, time_str);
+            State::CornerBadge { .. } => {
+                let local_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(175.0, 42.0));
+                Self::draw_card(ctx, local_rect, 21.0, false, time_str);
             }
         }
     }

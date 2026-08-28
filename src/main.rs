@@ -3,11 +3,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use eframe::egui_wgpu::{SurfaceConfig, WgpuConfiguration, wgpu::PresentMode};
 use x11rb::{
     connection::Connection,
-    protocol::xproto::{
-        AtomEnum, ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt, StackMode,
-    },
+    protocol::xproto::{AtomEnum, ConnectionExt, PropMode},
+    wrapper::ConnectionExt as _,
 };
 
 use crate::state_machine::OsdStateMachine;
@@ -19,13 +19,7 @@ const SLEEP_TIME: u64 = 120 * 60;
 
 fn trigger_system_suspend() {
     println!("Time out! Start to suspend system!");
-
-    let res = Command::new("systemctl").args(["suspend", "-i"]).status();
-
-    if let Err(e) = res {
-        eprintln!("Failed to trigger system suspend: {}", e);
-    }
-
+    let _ = Command::new("systemctl").args(["suspend", "-i"]).status();
     std::process::exit(0);
 }
 
@@ -43,11 +37,35 @@ fn get_screen_resolution() -> (f32, f32) {
 
 fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (conn, screen_num) = x11rb::connect(None)?;
-
     let screen = &conn.setup().roots[screen_num];
     let root = screen.root;
 
     let wm_name = conn.intern_atom(false, b"_NET_WM_NAME")?.reply()?.atom;
+    let net_wm_type = conn
+        .intern_atom(false, b"_NET_WM_WINDOW_TYPE")?
+        .reply()?
+        .atom;
+    let type_utility = conn
+        .intern_atom(false, b"_NET_WM_WINDOW_TYPE_UTILITY")?
+        .reply()?
+        .atom;
+    let net_wm_state = conn.intern_atom(false, b"_NET_WM_STATE")?.reply()?.atom;
+    let state_above = conn
+        .intern_atom(false, b"_NET_WM_STATE_ABOVE")?
+        .reply()?
+        .atom;
+    let state_skip_taskbar = conn
+        .intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR")?
+        .reply()?
+        .atom;
+    let state_skip_pager = conn
+        .intern_atom(false, b"_NET_WM_STATE_SKIP_PAGER")?
+        .reply()?
+        .atom;
+    let state_sticky = conn
+        .intern_atom(false, b"_NET_WM_STATE_STICKY")?
+        .reply()?
+        .atom;
 
     let tree = conn.query_tree(root)?.reply()?;
     for &win in &tree.children {
@@ -56,20 +74,28 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
             .reply()
         {
             if let Ok(title) = String::from_utf8(prop.value) {
-                println!("title: {}", &title);
                 if title == window_name {
-                    println!("Window found, make it osd!");
+                    println!("Window found, setting OSD properties...");
 
-                    conn.unmap_window(win)?;
-                    conn.change_window_attributes(
+                    conn.change_property32(
+                        PropMode::REPLACE,
                         win,
-                        &ChangeWindowAttributesAux::default().override_redirect(1),
+                        net_wm_type,
+                        AtomEnum::ATOM,
+                        &[type_utility],
                     )?;
-                    conn.map_window(win)?;
 
-                    conn.configure_window(
+                    conn.change_property32(
+                        PropMode::REPLACE,
                         win,
-                        &ConfigureWindowAux::default().stack_mode(StackMode::ABOVE),
+                        net_wm_state,
+                        AtomEnum::ATOM,
+                        &[
+                            state_above,
+                            state_skip_taskbar,
+                            state_skip_pager,
+                            state_sticky,
+                        ],
                     )?;
 
                     conn.flush()?;
@@ -85,6 +111,7 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
 struct SleepOdsApp {
     target_time: Instant,
     state_machine: OsdStateMachine,
+    is_window_shrunk: bool,
 }
 
 impl SleepOdsApp {
@@ -92,6 +119,7 @@ impl SleepOdsApp {
         Self {
             target_time: Instant::now() + duration,
             state_machine: OsdStateMachine::new(),
+            is_window_shrunk: false,
         }
     }
 }
@@ -110,6 +138,15 @@ impl eframe::App for SleepOdsApp {
 
         self.state_machine.tick(now, screen_rect);
 
+        if !self.is_window_shrunk
+            && self.state_machine.is_corner_badge()
+            && let Some(corner) = self.state_machine.get_current_rect()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(corner.size()));
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(corner.min));
+            self.is_window_shrunk = true;
+        }
+
         let remaining = if self.target_time > now {
             self.target_time - now
         } else {
@@ -126,10 +163,6 @@ impl eframe::App for SleepOdsApp {
 
         self.state_machine.render(ctx, &time_str);
 
-        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
-            egui::WindowLevel::AlwaysOnTop,
-        ));
-
         if self.state_machine.is_animating() {
             ctx.request_repaint();
         } else {
@@ -141,6 +174,7 @@ impl eframe::App for SleepOdsApp {
         [0.0, 0.0, 0.0, 0.0]
     }
 }
+
 fn main() -> eframe::Result<()> {
     let (screen_w, screen_h) = get_screen_resolution();
     println!("Screen resolution: {}x{}", screen_w, screen_h);
@@ -156,14 +190,20 @@ fn main() -> eframe::Result<()> {
     });
 
     let options = eframe::NativeOptions {
+        wgpu_options: WgpuConfiguration {
+            surface: SurfaceConfig {
+                present_mode: PresentMode::AutoNoVsync,
+                desired_maximum_frame_latency: Some(1),
+            },
+            ..Default::default()
+        },
         viewport: egui::ViewportBuilder::default()
             .with_decorations(false)
             .with_transparent(true)
             .with_always_on_top()
             .with_mouse_passthrough(true)
             .with_position([0.0, 0.0])
-            .with_inner_size([screen_w, screen_h])
-            .with_fullscreen(true),
+            .with_inner_size([screen_w, screen_h]),
         ..Default::default()
     };
 
