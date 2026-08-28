@@ -117,6 +117,13 @@ impl eframe::App for SleepOdsApp {
         let now = Instant::now();
         let screen_rect = ctx.viewport_rect();
 
+        if now >= self.target_time && !self.state_machine.is_finished() {
+            self.state_machine
+                .request(state_machine::Request::Finish, screen_rect);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+
         self.state_machine.tick(now, screen_rect);
 
         let remaining = if self.target_time > now {

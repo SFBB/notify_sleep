@@ -1,8 +1,11 @@
-use std::time::{Duration, Instant};
+use std::{
+    process::Command,
+    time::{Duration, Instant},
+};
 
 use egui::{Color32, CornerRadius, Pos2, Rect, RichText, Vec2};
 
-pub enum State {
+pub(crate) enum State {
     FullScreenAlert {
         start_time: Instant,
         duration: Duration,
@@ -23,19 +26,19 @@ pub enum State {
     Finish,
 }
 
-pub enum Request {
+pub(crate) enum Request {
     TriggerAlert { splash_duration: Duration },
     ShowCenterCard { duration: Duration },
     ShrinkToCorner { duration: Duration },
     Finish,
 }
 
-pub struct OsdStateMachine {
+pub(crate) struct OsdStateMachine {
     state: State,
 }
 
 impl OsdStateMachine {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             state: State::FullScreenAlert {
                 start_time: Instant::now(),
@@ -52,7 +55,7 @@ impl OsdStateMachine {
         a + (b - a) * t
     }
 
-    pub fn request(&mut self, req: Request, screen_rect: Rect) {
+    pub(crate) fn request(&mut self, req: Request, screen_rect: Rect) {
         let now = Instant::now();
 
         let center_size = Vec2::new(360.0, 190.0);
@@ -81,11 +84,14 @@ impl OsdStateMachine {
                 start_time: now,
                 duration,
             },
-            Request::Finish => State::Finish,
+            Request::Finish => {
+                trigger_system_suspend();
+                State::Finish
+            }
         };
     }
 
-    pub fn tick(&mut self, now: Instant, screen_rect: Rect) {
+    pub(crate) fn tick(&mut self, now: Instant, screen_rect: Rect) {
         match &self.state {
             State::FullScreenAlert {
                 start_time,
@@ -128,14 +134,18 @@ impl OsdStateMachine {
         }
     }
 
-    pub fn is_animating(&self) -> bool {
+    pub(crate) fn is_finished(&self) -> bool {
+        matches!(self.state, State::Finish)
+    }
+
+    pub(crate) fn is_animating(&self) -> bool {
         matches!(
             self.state,
             State::FullScreenAlert { .. } | State::ShrinkingToCorner { .. }
         )
     }
 
-    pub fn render(&self, ctx: &egui::Context, time_str: &str) {
+    pub(crate) fn render(&self, ctx: &egui::Context, time_str: &str) {
         let now = Instant::now();
         let screen_rect = ctx.viewport_rect();
 
@@ -294,4 +304,16 @@ impl OsdStateMachine {
                 });
             });
     }
+}
+
+fn trigger_system_suspend() {
+    println!("Time out! Start to suspend system!");
+
+    let res = Command::new("systemctl").args(["suspend", "-i"]).status();
+
+    if let Err(e) = res {
+        eprintln!("Failed to trigger system suspend: {}", e);
+    }
+
+    std::process::exit(0);
 }
