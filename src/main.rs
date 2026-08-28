@@ -183,7 +183,7 @@ fn main() -> eframe::Result<()> {
         let _ = make_window_osd(APP_WINDOW_NAME);
     });
 
-    std::thread::spawn(|| {
+    let suspend_timer_hanle = std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(SLEEP_TIME));
         trigger_system_suspend();
     });
@@ -207,5 +207,11 @@ fn main() -> eframe::Result<()> {
     };
 
     let app = SleepOdsApp::new(Duration::from_secs(SLEEP_TIME));
-    eframe::run_native(APP_WINDOW_NAME, options, Box::new(|_| Ok(Box::new(app))))
+    let app_result = eframe::run_native(APP_WINDOW_NAME, options, Box::new(|_| Ok(Box::new(app))));
+
+    if let Err(e) = suspend_timer_hanle.join() {
+        eprintln!("Faied to call suspend timer: {:?}", e);
+    }
+
+    app_result
 }
