@@ -25,6 +25,43 @@ struct State {
     sleep_triggered: bool,
 }
 
+impl State {
+    fn current_alpha(&self) -> f32 {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.start_time).as_millis() as f32;
+
+        match self.phase {
+            Phase::FullScreenAlert => {
+                let total = 2500.0;
+                let t = (elapsed / total).clamp(0.0, 1.0);
+                if t < 0.2 {
+                    t / 0.2
+                } else if t > 0.8 {
+                    (1.0 - t) / 0.2
+                } else {
+                    1.0
+                }
+            }
+            Phase::CenterCountdown => {
+                let total = 3000.0;
+                let t = (elapsed / total).clamp(0.0, 1.0);
+                if t < 0.167 {
+                    t / 0.167
+                } else if t > 0.833 {
+                    (1.0 - t) / 0.167
+                } else {
+                    1.0
+                }
+            }
+            Phase::CornerBadge => {
+                let total = 500.0;
+                let t = (elapsed / total).clamp(0.0, 1.0);
+                t
+            }
+        }
+    }
+}
+
 #[to_layer_message]
 #[derive(Debug, Clone)]
 enum Message {
@@ -84,6 +121,13 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
     Task::none()
 }
 
+fn fade_color(color: Color, alpha: f32) -> Color {
+    Color {
+        a: color.a * alpha,
+        ..color
+    }
+}
+
 fn view<'a>(
     state: &'a State,
     window: iced::window::Id,
@@ -107,16 +151,18 @@ fn view<'a>(
         format!("{:02}:{:02}", mins, secs)
     };
 
+    let alpha = state.current_alpha();
+
     match state.phase {
         Phase::FullScreenAlert => {
             let content = iced::widget::column![
-                text("🌙").size(64),
+                text("🌙").size(64).color(fade_color(Color::WHITE, alpha)),
                 text("TIME TO SLEEP")
                     .size(54)
-                    .color(Color::from_rgb(1.0, 0.43, 0.43)),
+                    .color(fade_color(Color::from_rgb(1.0, 0.43, 0.43), alpha)),
                 text("Time to sleep!")
                     .size(20)
-                    .color(Color::from_rgba(1.0, 1.0, 1.0, 0.8)),
+                    .color(fade_color(Color::from_rgba(1.0, 1.0, 1.0, 0.8), alpha)),
             ]
             .spacing(12)
             .align_x(alignment::Horizontal::Center);
@@ -126,22 +172,24 @@ fn view<'a>(
                 .height(iced::Length::Fill)
                 .align_x(alignment::Horizontal::Center)
                 .align_y(alignment::Vertical::Center)
-                .style(|_theme| container::Style {
-                    text_color: Some(Color::WHITE),
-                    background: Some(Color::from_rgba(0.08, 0.08, 0.1, 0.85).into()),
+                .style(move |_theme| container::Style {
+                    text_color: Some(fade_color(Color::WHITE, alpha)),
+                    background: Some(Color::from_rgba(0.08, 0.08, 0.1, 0.85 * alpha).into()),
                     ..Default::default()
                 })
                 .into()
         }
         Phase::CenterCountdown => {
             let content = iced::widget::column![
-                text("Time to sleep!").size(22).color(Color::WHITE),
+                text("Time to sleep!")
+                    .size(22)
+                    .color(fade_color(Color::WHITE, alpha)),
                 text(time_str)
                     .size(42)
-                    .color(Color::from_rgb(1.0, 0.43, 0.43)),
+                    .color(fade_color(Color::from_rgb(1.0, 0.43, 0.43), alpha)),
                 text("This PC will sleep after time out!")
                     .size(13)
-                    .color(Color::from_rgba(1.0, 1.0, 1.0, 0.7)),
+                    .color(fade_color(Color::from_rgba(1.0, 1.0, 1.0, 0.7), alpha)),
             ]
             .spacing(8)
             .align_x(alignment::Horizontal::Center);
@@ -152,11 +200,11 @@ fn view<'a>(
                 .height(190)
                 .align_x(alignment::Horizontal::Center)
                 .align_y(alignment::Vertical::Center)
-                .style(|_theme| container::Style {
-                    text_color: Some(Color::WHITE),
-                    background: Some(Color::from_rgba(0.08, 0.08, 0.1, 0.85).into()),
+                .style(move |_theme| container::Style {
+                    text_color: Some(fade_color(Color::WHITE, alpha)),
+                    background: Some(Color::from_rgba(0.08, 0.08, 0.1, 0.85 * alpha).into()),
                     border: Border {
-                        color: Color::from_rgba(1.0, 1.0, 1.0, 0.15),
+                        color: Color::from_rgba(1.0, 1.0, 1.0, 0.15 * alpha),
                         width: 1.0,
                         radius: 24.0.into(),
                     },
@@ -176,13 +224,13 @@ fn view<'a>(
         }
         Phase::CornerBadge => {
             let content = row![
-                text("🌙").size(18),
+                text("🌙").size(18).color(fade_color(Color::WHITE, alpha)),
                 text(time_str)
                     .size(17)
-                    .color(Color::from_rgb(1.0, 0.43, 0.43)),
+                    .color(fade_color(Color::from_rgb(1.0, 0.43, 0.43), alpha)),
                 text("Sleep")
                     .size(12)
-                    .color(Color::from_rgba(1.0, 1.0, 1.0, 0.6)),
+                    .color(fade_color(Color::from_rgba(1.0, 1.0, 1.0, 0.6), alpha)),
             ]
             .spacing(6)
             .align_y(alignment::Vertical::Center);
@@ -191,11 +239,11 @@ fn view<'a>(
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)
                 .padding([8, 14])
-                .style(|_theme| container::Style {
-                    text_color: Some(Color::WHITE),
-                    background: Some(Color::from_rgba(0.08, 0.08, 0.1, 0.85).into()),
+                .style(move |_theme| container::Style {
+                    text_color: Some(fade_color(Color::WHITE, alpha)),
+                    background: Some(Color::from_rgba(0.08, 0.08, 0.1, 0.85 * alpha).into()),
                     border: Border {
-                        color: Color::from_rgba(1.0, 1.0, 1.0, 0.15),
+                        color: Color::from_rgba(1.0, 1.0, 1.0, 0.15 * alpha),
                         width: 1.0,
                         radius: 21.0.into(),
                     },
@@ -206,8 +254,24 @@ fn view<'a>(
     }
 }
 
-fn subscription(_state: &State) -> Subscription<Message> {
-    iced::time::every(Duration::from_millis(500)).map(|_| Message::Tick)
+fn subscription(state: &State) -> Subscription<Message> {
+    match state.phase {
+        Phase::FullScreenAlert | Phase::CenterCountdown => {
+            // Tick rapidly (every 16ms ~ 60fps) to make transitions look perfectly smooth
+            iced::time::every(Duration::from_millis(16)).map(|_| Message::Tick)
+        }
+        Phase::CornerBadge => {
+            // Tick slowly (every 500ms) to save CPU/GPU resources when static
+            let now = Instant::now();
+            let elapsed = now.duration_since(state.start_time);
+            if elapsed < Duration::from_millis(500) {
+                // Keep ticking rapidly for the 500ms fade-in transition
+                iced::time::every(Duration::from_millis(16)).map(|_| Message::Tick)
+            } else {
+                iced::time::every(Duration::from_millis(500)).map(|_| Message::Tick)
+            }
+        }
+    }
 }
 
 fn is_layer_shell_supported() -> bool {
