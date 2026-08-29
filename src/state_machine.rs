@@ -2,6 +2,8 @@ use std::time::{Duration, Instant};
 
 use egui::{Color32, CornerRadius, Pos2, Rect, RichText, Vec2};
 
+use crate::session::{SessionType, detect_session_type};
+
 pub(crate) enum State {
     FullScreenAlert {
         start_time: Instant,
@@ -242,9 +244,13 @@ impl OsdStateMachine {
                 );
             }
 
-            State::CornerBadge { .. } => {
-                let local_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(175.0, 42.0));
-                Self::draw_card(ctx, local_rect, 21.0, false, time_str);
+            State::CornerBadge { rect } => {
+                if detect_session_type() == SessionType::X11 {
+                    let local_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(175.0, 42.0));
+                    Self::draw_card(ctx, local_rect, 21.0, false, time_str);
+                } else {
+                    Self::draw_card(ctx, *rect, 21.0, false, time_str);
+                }
             }
         }
     }

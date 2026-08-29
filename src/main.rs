@@ -10,8 +10,12 @@ use x11rb::{
     wrapper::ConnectionExt as _,
 };
 
-use crate::state_machine::OsdStateMachine;
+use crate::{
+    session::{SessionType, detect_session_type},
+    state_machine::OsdStateMachine,
+};
 
+mod session;
 mod state_machine;
 
 const APP_WINDOW_NAME: &str = "Sleep OSD";
@@ -146,7 +150,8 @@ impl eframe::App for SleepOdsApp {
 
         self.state_machine.tick(now, screen_rect);
 
-        if !self.is_window_shrunk
+        if detect_session_type() == SessionType::X11
+            && !self.is_window_shrunk
             && self.state_machine.is_corner_badge()
             && let Some(corner) = self.state_machine.get_current_rect()
         {
