@@ -91,7 +91,57 @@ fn subscription(_state: &State) -> Subscription<Message> {
     iced::time::every(Duration::from_millis(500)).map(|_| Message::Tick)
 }
 
-fn main() -> Result<(), iced_layershell::Error> {
+fn is_layer_shell_supported() -> bool {
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        return false;
+    }
+
+    let conn = match Connection::connect_to_env() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    struct AppState;
+    impl Dispatch<WlRegistry, GlobalListContents> for AppState {
+        fn event(
+            _state: &mut Self,
+            _proxy: &WlRegistry,
+            _event: <WlRegistry as wayland_client::Proxy>::Event,
+            _data: &GlobalListContents,
+            _conn: &Connection,
+            _qh: &QueueHandle<Self>,
+        ) {
+        }
+    }
+
+    let (globals, _queue) = match registry_queue_init::<AppState>(&conn) {
+        Ok(g) => g,
+        Err(_) => return false,
+    };
+
+    globals
+        .contents()
+        .clone_list()
+        .iter()
+        .any(|g| g.interface == "zwlr_layer_shell_v1")
+}
+
+use wayland_client::globals::{registry_queue_init, GlobalListContents};
+use wayland_client::protocol::wl_registry::WlRegistry;
+use wayland_client::{Connection, Dispatch, QueueHandle};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if !is_layer_shell_supported() {
+        eprintln!(
+            "❌ Error: Your Wayland compositor does not support the 'wlr-layer-shell' protocol (zwlr_layer_shell_v1).\n\
+             This protocol is required by the native Wayland mode (used by Sway, Hyprland, etc.).\n\
+             If you are on GNOME or another compositor that doesn't support layer shell, please use the X11/XWayland version instead by running:\n\
+             \n\
+             ./notify_sleep_x11"
+        );
+        std::process::exit(1);
+    }
+
     let settings = Settings {
         layer_settings: LayerShellSettings {
             layer: Layer::Overlay,
@@ -111,4 +161,6 @@ fn main() -> Result<(), iced_layershell::Error> {
         .settings(settings)
         .subscription(subscription)
         .run()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    Ok(())
 }

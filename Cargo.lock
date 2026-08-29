@@ -2687,6 +2687,7 @@ dependencies = [
  "egui",
  "iced",
  "iced_layershell",
+ "wayland-client",
  "x11rb 0.14.0",
 ]
 
