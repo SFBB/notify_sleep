@@ -5,6 +5,21 @@ edition = "2024"
 
 [dependencies]
 eframe = "0.36.1"
-chrono = "0.4.45"
 egui = "0.36.1"
-x11rb = { version = "0.14.0", features=[]}
+x11rb = { version = "0.14.0", features = [] }
+chrono = "0.4.45"
+
+iced = { version = "0.14.0", default-features = false, features = [
+  "wgpu",
+  "tokio",
+  "wayland",
+] }
+iced_layershell = "0.19.0"
+
+[[bin]]
+name = "notify_sleep_x11"
+path = "src/bin/x11.rs"
+
+[[bin]]
+name = "notify_sleep_wayland"
+path = "src/bin/wayland.rs"

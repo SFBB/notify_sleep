@@ -4,36 +4,17 @@ use std::{
 };
 
 use eframe::egui_wgpu::{SurfaceConfig, WgpuConfiguration, wgpu::PresentMode};
+use notify_sleep::{
+    APP_WINDOW_NAME, SLEEP_TIME,
+    session::{SessionType, detect_session_type},
+    state_machine::{self, OsdStateMachine},
+    trigger_system_suspend,
+};
 use x11rb::{
     connection::Connection,
     protocol::xproto::{AtomEnum, ConnectionExt, PropMode},
     wrapper::ConnectionExt as _,
 };
-
-use crate::{
-    session::{SessionType, detect_session_type},
-    state_machine::OsdStateMachine,
-};
-
-mod session;
-mod state_machine;
-
-const APP_WINDOW_NAME: &str = "Sleep OSD";
-const SLEEP_TIME: u64 = 120 * 60;
-
-fn trigger_system_suspend() {
-    println!("Time out! Start to suspend system!");
-    let _ = Command::new("dbus-send")
-        .args([
-            "--system",
-            "--print-reply",
-            "--dest=org.freedesktop.login1",
-            "/org/freedesktop/login1",
-            "org.freedesktop.login1.Manager.Suspend",
-            "boolean:true",
-        ])
-        .status();
-}
 
 fn get_screen_resolution() -> (f32, f32) {
     if let Ok((conn, screen_num)) = x11rb::connect(None) {

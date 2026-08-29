@@ -15,12 +15,12 @@ export DISPLAY=:0
 export XAUTHORITY=/home/tom/.Xauthority
 export XDG_RUNTIME_DIR=/run/user/1000
 
-exec /home/tom/Documents/codes/rust/notify_sleep/target/release/notify_sleep
+exec /home/tom/Documents/codes/rust/notify_sleep/target/release/notify_sleep_x11
 EOF
 fi
 chmod +x "$RUN_SCRIPT"
 
-if [ ! -f "$PROJECT_DIR/target/release/notify_sleep" ]; then
+if [ ! -f "$PROJECT_DIR/target/release/notify_sleep_x11" ]; then
   echo "Building release program..."
   (cd "$PROJECT_DIR" && cargo build --release)
 fi

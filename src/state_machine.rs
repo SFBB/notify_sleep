@@ -2,9 +2,8 @@ use std::time::{Duration, Instant};
 
 use egui::{Color32, CornerRadius, Pos2, Rect, RichText, Vec2};
 
-use crate::session::{SessionType, detect_session_type};
 
-pub(crate) enum State {
+pub enum State {
     FullScreenAlert {
         start_time: Instant,
         duration: Duration,
@@ -26,19 +25,19 @@ pub(crate) enum State {
 }
 
 #[allow(dead_code)]
-pub(crate) enum Request {
+pub enum Request {
     TriggerAlert { splash_duration: Duration },
     ShowCenterCard { duration: Duration },
     ShrinkToCorner { duration: Duration },
     Finish,
 }
 
-pub(crate) struct OsdStateMachine {
+pub struct OsdStateMachine {
     state: State,
 }
 
 impl OsdStateMachine {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             state: State::FullScreenAlert {
                 start_time: Instant::now(),
@@ -55,7 +54,7 @@ impl OsdStateMachine {
         a + (b - a) * t
     }
 
-    pub(crate) fn request(&mut self, req: Request, screen_rect: Rect) {
+    pub fn request(&mut self, req: Request, screen_rect: Rect) {
         let now = Instant::now();
 
         let center_size = Vec2::new(360.0, 190.0);
@@ -88,7 +87,7 @@ impl OsdStateMachine {
         };
     }
 
-    pub(crate) fn tick(&mut self, now: Instant, screen_rect: Rect) {
+    pub fn tick(&mut self, now: Instant, screen_rect: Rect) {
         match &self.state {
             State::FullScreenAlert {
                 start_time,
@@ -131,29 +130,29 @@ impl OsdStateMachine {
         }
     }
 
-    pub(crate) fn is_finished(&self) -> bool {
+    pub fn is_finished(&self) -> bool {
         matches!(self.state, State::Finish)
     }
 
-    pub(crate) fn is_animating(&self) -> bool {
+    pub fn is_animating(&self) -> bool {
         matches!(
             self.state,
             State::FullScreenAlert { .. } | State::ShrinkingToCorner { .. }
         )
     }
 
-    pub(crate) fn is_corner_badge(&self) -> bool {
+    pub fn is_corner_badge(&self) -> bool {
         matches!(self.state, State::CornerBadge { .. })
     }
 
-    pub(crate) fn get_current_rect(&self) -> Option<Rect> {
+    pub fn get_current_rect(&self) -> Option<Rect> {
         match &self.state {
             State::CornerBadge { rect } => Some(*rect),
             _ => None,
         }
     }
 
-    pub(crate) fn render(&self, ctx: &egui::Context, time_str: &str) {
+    pub fn render(&self, ctx: &egui::Context, time_str: &str) {
         let now = Instant::now();
         let screen_rect = ctx.viewport_rect();
 
@@ -245,12 +244,7 @@ impl OsdStateMachine {
             }
 
             State::CornerBadge { rect } => {
-                if detect_session_type() == SessionType::X11 {
-                    let local_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(175.0, 42.0));
-                    Self::draw_card(ctx, local_rect, 21.0, false, time_str);
-                } else {
-                    Self::draw_card(ctx, *rect, 21.0, false, time_str);
-                }
+                Self::draw_card(ctx, *rect, 21.0, false, time_str);
             }
         }
     }
