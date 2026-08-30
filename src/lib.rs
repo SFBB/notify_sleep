@@ -51,6 +51,18 @@ pub fn trigger_alert_sound() {
 
 pub fn trigger_system_suspend() {
     println!("Time out! Start to suspend system via DBus!");
+    let _ = std::process::Command::new("wmctrl")
+        .args(["-k", "on"])
+        .status();
+    let _ = std::process::Command::new("qdbus")
+        .args([
+            "org.kde.KWin",
+            "/KWin",
+            "org.kde.KWin.
+  showDesktop",
+            "true",
+        ])
+        .status();
     let _ = std::process::Command::new("dbus-send")
         .args([
             "--system",
