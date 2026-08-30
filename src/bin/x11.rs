@@ -87,21 +87,21 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
                     state_sticky,
                 ],
             )?;
-            let event = ClientMessageEvent {
-                response_type: 33, // CLIENT_MESSAGE
-                format: 32,
-                sequence: 0,
-                window: win,
-                type_: net_wm_state,
-                data: [
-                    1, // _NET_WM_STATE_ADD
-                    state_skip_taskbar,
-                    state_skip_pager,
-                    state_above,
-                    state_sticky,
-                ]
-                .into(),
-            };
+            // let event = ClientMessageEvent {
+            //     response_type: 33, // CLIENT_MESSAGE
+            //     format: 32,
+            //     sequence: 0,
+            //     window: win,
+            //     type_: net_wm_state,
+            //     data: [
+            //         1, // _NET_WM_STATE_ADD
+            //         state_skip_taskbar,
+            //         state_skip_pager,
+            //         state_above,
+            //         state_sticky,
+            //     ]
+            //     .into(),
+            // };
 
             // conn.send_event(
             //     false,
