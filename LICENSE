@@ -672,3 +672,7 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+    * The code of this project is licensed under the [MIT License](LICENSE).
+    * Audio assets are licensed under [OGA-BY 4.0](https://static.opengameart.org/OGA-BY-4.0.txt). See ATTRIBUTION.md for
+  full credits.
