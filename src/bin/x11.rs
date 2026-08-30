@@ -1,7 +1,4 @@
-use std::{
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use eframe::egui_wgpu::{SurfaceConfig, WgpuConfiguration, wgpu::PresentMode};
 use notify_sleep::{
@@ -12,7 +9,7 @@ use notify_sleep::{
 };
 use x11rb::{
     connection::Connection,
-    protocol::xproto::{AtomEnum, ConnectionExt, PropMode},
+    protocol::xproto::{AtomEnum, ClientMessageEvent, ConnectionExt, EventMask, PropMode},
     wrapper::ConnectionExt as _,
 };
 
@@ -38,8 +35,8 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
         .intern_atom(false, b"_NET_WM_WINDOW_TYPE")?
         .reply()?
         .atom;
-    let type_utility = conn
-        .intern_atom(false, b"_NET_WM_WINDOW_TYPE_UTILITY")?
+    let type_notification = conn
+        .intern_atom(false, b"_NET_WM_WINDOW_TYPE_NOTIFICATION")?
         .reply()?
         .atom;
     let net_wm_state = conn.intern_atom(false, b"_NET_WM_STATE")?.reply()?.atom;
@@ -65,36 +62,55 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
         if let Ok(prop) = conn
             .get_property(false, win, wm_name, AtomEnum::ANY, 0, 1024)?
             .reply()
+            && let Ok(title) = String::from_utf8(prop.value)
+            && title == window_name
         {
-            if let Ok(title) = String::from_utf8(prop.value) {
-                if title == window_name {
-                    println!("Window found, setting OSD properties...");
+            println!("Window found, setting OSD properties...");
 
-                    conn.change_property32(
-                        PropMode::REPLACE,
-                        win,
-                        net_wm_type,
-                        AtomEnum::ATOM,
-                        &[type_utility],
-                    )?;
+            conn.change_property32(
+                PropMode::REPLACE,
+                win,
+                net_wm_type,
+                AtomEnum::ATOM,
+                &[type_notification],
+            )?;
 
-                    conn.change_property32(
-                        PropMode::REPLACE,
-                        win,
-                        net_wm_state,
-                        AtomEnum::ATOM,
-                        &[
-                            state_above,
-                            state_skip_taskbar,
-                            state_skip_pager,
-                            state_sticky,
-                        ],
-                    )?;
+            conn.change_property32(
+                PropMode::REPLACE,
+                win,
+                net_wm_state,
+                AtomEnum::ATOM,
+                &[
+                    state_above,
+                    state_skip_taskbar,
+                    state_skip_pager,
+                    state_sticky,
+                ],
+            )?;
+            let event = ClientMessageEvent {
+                response_type: 33, // CLIENT_MESSAGE
+                format: 32,
+                sequence: 0,
+                window: win,
+                type_: net_wm_state,
+                data: [
+                    1, // _NET_WM_STATE_ADD
+                    state_skip_taskbar,
+                    state_skip_pager,
+                    state_above,
+                    state_sticky,
+                ]
+                .into(),
+            };
 
-                    conn.flush()?;
-                    break;
-                }
-            }
+            conn.send_event(
+                false,
+                root,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+                event,
+            )?;
+            conn.flush()?;
+            break;
         }
     }
 
