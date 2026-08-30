@@ -103,12 +103,13 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
                 .into(),
             };
 
-            conn.send_event(
-                false,
-                root,
-                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
-                event,
-            )?;
+            // conn.send_event(
+            //     false,
+            //     root,
+            //     EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+            //     event,
+            // )?;
+
             conn.flush()?;
             break;
         }
