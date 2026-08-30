@@ -4,7 +4,7 @@ This project uses the following third-party assets in accordance with their resp
 
 ### 1. Audio Assets
 
-* **Track Name**: Memoria Fragmentada
+* **Track Name**: [Memoria Fragmentada](assets/memoria_fragmentada.mp3)
 * **Author / Creator**: [ElRiviio](https://opengameart.org/users/elriviio)
 * **Source**: <https://opengameart.org/content/memoria-fragmentada>
 * **License**: [OGA-BY 4.0](https://static.opengameart.org/OGA-BY-4.0.txt) / [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)

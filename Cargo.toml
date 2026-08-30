@@ -16,6 +16,7 @@ iced = { version = "0.14.0", default-features = false, features = [
 ] }
 iced_layershell = "0.19.0"
 wayland-client = "0.31.15"
+rodio = "0.22.2"
 
 [[bin]]
 name = "notify_sleep_x11"

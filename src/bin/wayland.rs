@@ -325,6 +325,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
+    trigger_system_suspend();
+
     let settings = Settings {
         layer_settings: LayerShellSettings {
             layer: Layer::Overlay,
@@ -345,5 +347,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subscription(subscription)
         .run()
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
     Ok(())
 }

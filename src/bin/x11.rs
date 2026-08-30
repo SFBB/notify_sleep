@@ -8,7 +8,7 @@ use notify_sleep::{
     APP_WINDOW_NAME, SLEEP_TIME,
     session::{SessionType, detect_session_type},
     state_machine::{self, OsdStateMachine},
-    trigger_system_suspend,
+    trigger_alert_sound, trigger_system_suspend,
 };
 use x11rb::{
     connection::Connection,
@@ -182,6 +182,8 @@ fn main() -> eframe::Result<()> {
         std::thread::sleep(Duration::from_secs(SLEEP_TIME));
         trigger_system_suspend();
     });
+
+    trigger_alert_sound();
 
     let options = eframe::NativeOptions {
         wgpu_options: WgpuConfiguration {
