@@ -75,40 +75,35 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
                 &[type_notification],
             )?;
 
-            conn.change_property32(
-                PropMode::REPLACE,
-                win,
-                net_wm_state,
-                AtomEnum::ATOM,
-                &[
-                    state_above,
-                    state_skip_taskbar,
-                    state_skip_pager,
-                    state_sticky,
-                ],
+            let event_skip = ClientMessageEvent {
+                response_type: 33, // CLIENT_MESSAGE
+                format: 32,
+                sequence: 0,
+                window: win,
+                type_: net_wm_state,
+                data: [1, state_skip_taskbar, state_skip_pager, 1, 0].into(),
+            };
+            conn.send_event(
+                false,
+                root,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+                event_skip,
             )?;
-            // let event = ClientMessageEvent {
-            //     response_type: 33, // CLIENT_MESSAGE
-            //     format: 32,
-            //     sequence: 0,
-            //     window: win,
-            //     type_: net_wm_state,
-            //     data: [
-            //         1, // _NET_WM_STATE_ADD
-            //         state_skip_taskbar,
-            //         state_skip_pager,
-            //         state_above,
-            //         state_sticky,
-            //     ]
-            //     .into(),
-            // };
 
-            // conn.send_event(
-            //     false,
-            //     root,
-            //     EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
-            //     event,
-            // )?;
+            let event_above = ClientMessageEvent {
+                response_type: 33,
+                format: 32,
+                sequence: 0,
+                window: win,
+                type_: net_wm_state,
+                data: [1, state_above, state_sticky, 1, 0].into(),
+            };
+            conn.send_event(
+                false,
+                root,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+                event_above,
+            )?;
 
             conn.flush()?;
             break;
@@ -192,6 +187,8 @@ fn main() -> eframe::Result<()> {
 
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_millis(200));
+        let _ = make_window_osd(APP_WINDOW_NAME);
+        std::thread::sleep(Duration::from_millis(300));
         let _ = make_window_osd(APP_WINDOW_NAME);
     });
 
