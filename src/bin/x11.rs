@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use eframe::egui_wgpu::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
 use eframe::egui_wgpu::{SurfaceConfig, WgpuConfiguration, wgpu::PresentMode};
 use notify_sleep::{
     APP_WINDOW_NAME, SLEEP_TIME,
@@ -21,16 +22,14 @@ fn get_screen_resolution() -> (f32, f32) {
             screen.height_in_pixels as f32,
         );
     }
-    println!("We use the fallback screen resolution!");
     (1920.0, 1080.0)
 }
 
-fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn apply_osd_properties_to_x11_window(win_id: u32) -> Result<(), Box<dyn std::error::Error>> {
     let (conn, screen_num) = x11rb::connect(None)?;
     let screen = &conn.setup().roots[screen_num];
     let root = screen.root;
 
-    let wm_name = conn.intern_atom(false, b"_NET_WM_NAME")?.reply()?.atom;
     let net_wm_type = conn
         .intern_atom(false, b"_NET_WM_WINDOW_TYPE")?
         .reply()?
@@ -57,59 +56,62 @@ fn make_window_osd(window_name: &str) -> Result<(), Box<dyn std::error::Error>> 
         .reply()?
         .atom;
 
-    let tree = conn.query_tree(root)?.reply()?;
-    for &win in &tree.children {
-        if let Ok(prop) = conn
-            .get_property(false, win, wm_name, AtomEnum::ANY, 0, 1024)?
-            .reply()
-            && let Ok(title) = String::from_utf8(prop.value)
-            && title == window_name
-        {
-            println!("Window found, setting OSD properties...");
+    // 1. Set window type to Notification
+    conn.change_property32(
+        PropMode::REPLACE,
+        win_id,
+        net_wm_type,
+        AtomEnum::ATOM,
+        &[type_notification],
+    )?;
 
-            conn.change_property32(
-                PropMode::REPLACE,
-                win,
-                net_wm_type,
-                AtomEnum::ATOM,
-                &[type_notification],
-            )?;
+    // 2. Direct property write for initial state
+    conn.change_property32(
+        PropMode::REPLACE,
+        win_id,
+        net_wm_state,
+        AtomEnum::ATOM,
+        &[
+            state_above,
+            state_skip_taskbar,
+            state_skip_pager,
+            state_sticky,
+        ],
+    )?;
 
-            let event_skip = ClientMessageEvent {
-                response_type: 33, // CLIENT_MESSAGE
-                format: 32,
-                sequence: 0,
-                window: win,
-                type_: net_wm_state,
-                data: [1, state_skip_taskbar, state_skip_pager, 1, 0].into(),
-            };
-            conn.send_event(
-                false,
-                root,
-                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
-                event_skip,
-            )?;
+    // 3. Send ClientMessage to remove from taskbar and pager
+    let event_skip = ClientMessageEvent {
+        response_type: 33, // CLIENT_MESSAGE
+        format: 32,
+        sequence: 0,
+        window: win_id,
+        type_: net_wm_state,
+        data: [1, state_skip_taskbar, state_skip_pager, 1, 0].into(),
+    };
+    conn.send_event(
+        false,
+        root,
+        EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+        event_skip,
+    )?;
 
-            let event_above = ClientMessageEvent {
-                response_type: 33,
-                format: 32,
-                sequence: 0,
-                window: win,
-                type_: net_wm_state,
-                data: [1, state_above, state_sticky, 1, 0].into(),
-            };
-            conn.send_event(
-                false,
-                root,
-                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
-                event_above,
-            )?;
+    // 4. Send ClientMessage to ensure always on top and sticky
+    let event_above = ClientMessageEvent {
+        response_type: 33,
+        format: 32,
+        sequence: 0,
+        window: win_id,
+        type_: net_wm_state,
+        data: [1, state_above, state_sticky, 1, 0].into(),
+    };
+    conn.send_event(
+        false,
+        root,
+        EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+        event_above,
+    )?;
 
-            conn.flush()?;
-            break;
-        }
-    }
-
+    conn.flush()?;
     Ok(())
 }
 
@@ -117,20 +119,32 @@ struct SleepOdsApp {
     target_time: Instant,
     state_machine: OsdStateMachine,
     is_window_shrunk: bool,
+    win_id: Option<u32>,
+    first_frame: bool,
 }
 
 impl SleepOdsApp {
-    fn new(duration: Duration) -> Self {
+    fn new(duration: Duration, win_id: Option<u32>) -> Self {
         Self {
             target_time: Instant::now() + duration,
             state_machine: OsdStateMachine::new(),
             is_window_shrunk: false,
+            win_id,
+            first_frame: true,
         }
     }
 }
 
 impl eframe::App for SleepOdsApp {
     fn ui(&mut self, ctx: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if self.first_frame {
+            self.first_frame = false;
+            if let Some(id) = self.win_id {
+                println!("first frame-window id: {}!", id);
+                let _ = apply_osd_properties_to_x11_window(id);
+            }
+        }
+
         let now = Instant::now();
         let screen_rect = ctx.viewport_rect();
 
@@ -185,14 +199,7 @@ fn main() -> eframe::Result<()> {
     let (screen_w, screen_h) = get_screen_resolution();
     println!("Screen resolution: {}x{}", screen_w, screen_h);
 
-    std::thread::spawn(|| {
-        std::thread::sleep(Duration::from_millis(200));
-        let _ = make_window_osd(APP_WINDOW_NAME);
-        std::thread::sleep(Duration::from_millis(300));
-        let _ = make_window_osd(APP_WINDOW_NAME);
-    });
-
-    let suspend_timer_hanle = std::thread::spawn(|| {
+    let suspend_timer_handle = std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(SLEEP_TIME));
         trigger_system_suspend();
     });
@@ -217,11 +224,38 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    let app = SleepOdsApp::new(Duration::from_secs(SLEEP_TIME));
-    let app_result = eframe::run_native(APP_WINDOW_NAME, options, Box::new(|_| Ok(Box::new(app))));
+    let app_result = eframe::run_native(
+        APP_WINDOW_NAME,
+        options,
+        Box::new(|cc| {
+            let mut win_id = None;
+            if let Ok(handle) = cc.window_handle() {
+                match handle.as_raw() {
+                    RawWindowHandle::Xlib(h) => {
+                        let id = h.window as u32;
+                        println!("xlib-window id: {}!", id);
+                        let _ = apply_osd_properties_to_x11_window(id);
+                        win_id = Some(id);
+                    }
+                    RawWindowHandle::Xcb(h) => {
+                        let id = h.window.get();
+                        println!("xcb-window id: {}!", id);
+                        let _ = apply_osd_properties_to_x11_window(id);
+                        win_id = Some(id);
+                    }
+                    _ => {}
+                }
+            }
 
-    if let Err(e) = suspend_timer_hanle.join() {
-        eprintln!("Faied to call suspend timer: {:?}", e);
+            Ok(Box::new(SleepOdsApp::new(
+                Duration::from_secs(SLEEP_TIME),
+                win_id,
+            )))
+        }),
+    );
+
+    if let Err(e) = suspend_timer_handle.join() {
+        eprintln!("Failed to join suspend timer thread: {:?}", e);
     }
 
     app_result
