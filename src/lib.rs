@@ -49,20 +49,47 @@ pub fn trigger_alert_sound() {
     });
 }
 
+pub fn pause_video_players() {
+    let script = r#"
+        for inh in $(dbus-send --session --dest=org.gnome.SessionManager --type=method_call --print-reply /org/gnome/SessionManager org.gnome.SessionManager.GetInhibitors 2>/dev/null | grep -o "/org/gnome/SessionManager/Inhibitor[0-9]*"); do
+            reason=$(dbus-send --session --dest=org.gnome.SessionManager --type=method_call --print-reply "$inh" org.gnome.SessionManager.Inhibitor.GetReason 2>/dev/null | grep -o "string \"[^\"]*\"" | cut -d "\"" -f2)
+            app=$(dbus-send --session --dest=org.gnome.SessionManager --type=method_call --print-reply "$inh" org.gnome.SessionManager.Inhibitor.GetAppId 2>/dev/null | grep -o "string \"[^\"]*\"" | cut -d "\"" -f2)
+
+            if echo "$reason" | grep -qi "video"; then
+                app_lower=$(echo "$app" | tr "[:upper:]" "[:lower:]")
+                keyword="org.mpris.MediaPlayer2"
+                if echo "$app_lower" | grep -q "chrome\|chromium"; then
+                    keyword="chromium"
+                elif echo "$app_lower" | grep -q "firefox"; then
+                    keyword="firefox"
+                elif echo "$app_lower" | grep -q "vlc"; then
+                    keyword="vlc"
+                elif echo "$app_lower" | grep -q "mpv"; then
+                    keyword="mpv"
+                fi
+
+                for player in $(dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames 2>/dev/null | grep -o "org\.mpris\.MediaPlayer2\.[^\"]*" | grep -i "$keyword"); do
+                    dbus-send --session --type=method_call --dest="$player" /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Pause >/dev/null 2>&1
+                done
+            fi
+        done
+    "#;
+    let _ = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .status();
+}
+
 pub fn trigger_system_suspend() {
     println!("Time out! Start to suspend system via DBus!");
-    let _ = std::process::Command::new("wmctrl")
-        .args(["-k", "on"])
-        .status();
-    let _ = std::process::Command::new("qdbus")
-        .args([
-            "org.kde.KWin",
-            "/KWin",
-            "org.kde.KWin.
-  showDesktop",
-            "true",
-        ])
-        .status();
+
+    // 1. Pause any active video playback (sparing audio-only streams)
+    // pause_video_players();
+
+    // 2. Short wait to allow the browser/player to release its video wake lock
+    std::thread::sleep(Duration::from_millis(200));
+
+    // 3. Suspend system via logind DBus
     let _ = std::process::Command::new("dbus-send")
         .args([
             "--system",
