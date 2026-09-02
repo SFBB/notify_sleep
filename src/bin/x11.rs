@@ -65,7 +65,21 @@ fn apply_osd_properties_to_x11_window(win_id: u32) -> Result<(), Box<dyn std::er
         &[type_notification],
     )?;
 
-    // 2. Direct property write for initial state
+    // 2. Set WM_HINTS: explicitly declare that client rejects input focus
+    let wm_hints = [
+        1u32, // InputHint: input flag is valid
+        0u32, // input: false (never takes keyboard focus)
+        0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    ];
+    conn.change_property32(
+        PropMode::REPLACE,
+        win_id,
+        AtomEnum::WM_HINTS,
+        AtomEnum::WM_HINTS,
+        &wm_hints,
+    )?;
+
+    // 3. Direct property write for initial state
     conn.change_property32(
         PropMode::REPLACE,
         win_id,
@@ -79,7 +93,7 @@ fn apply_osd_properties_to_x11_window(win_id: u32) -> Result<(), Box<dyn std::er
         ],
     )?;
 
-    // 3. Send ClientMessage to remove from taskbar and pager
+    // 4. Send ClientMessage to remove from taskbar and pager
     let event_skip = ClientMessageEvent {
         response_type: 33, // CLIENT_MESSAGE
         format: 32,
@@ -95,7 +109,7 @@ fn apply_osd_properties_to_x11_window(win_id: u32) -> Result<(), Box<dyn std::er
         event_skip,
     )?;
 
-    // 4. Send ClientMessage to ensure always on top and sticky
+    // 5. Send ClientMessage to ensure always on top and sticky
     let event_above = ClientMessageEvent {
         response_type: 33,
         format: 32,
@@ -215,6 +229,7 @@ fn main() -> eframe::Result<()> {
             ..Default::default()
         },
         viewport: egui::ViewportBuilder::default()
+            .with_active(false)
             .with_decorations(false)
             .with_transparent(true)
             .with_always_on_top()
