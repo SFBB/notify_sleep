@@ -84,7 +84,7 @@ pub fn trigger_system_suspend() {
     println!("Time out! Start to suspend system via DBus!");
 
     // 1. Pause any active video playback (sparing audio-only streams)
-    // pause_video_players();
+    pause_video_players();
 
     // 2. Short wait to allow the browser/player to release its video wake lock
     std::thread::sleep(Duration::from_millis(200));
