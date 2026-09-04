@@ -48,7 +48,6 @@ echo "Creating systemd user timer: $TIMER_FILE"
 cat >"$TIMER_FILE" <<'EOF'
 [Unit]
 Description=Daily 21:00 Timer for Notify Sleep OSD
-PartOf=notify_sleep.service
 
 [Timer]
 OnCalendar=*-*-* 21:00:00
